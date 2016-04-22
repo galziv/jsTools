@@ -3,33 +3,35 @@ var CanvasX = (function () {
 
     'use strict';
 
-    var animateArray = function(_this, func, parametersArray, valueIndex, startValue, endValue, durationMs) {
+    var animateArray = function (_this, func, parametersArray, valueIndex, startValue, endValue, durationMs) {
 
-        return new Promise(function(resolve, reject) {
+        return new Promise(function (resolve, reject) {
             var start = Date.now();
             var before = start;
-            var diffs = startValue.map(function(d, i) {
+            var diffs = startValue.map(function (d, i) {
                 return Math.abs(endValue[i] - startValue[i]);
             })
 
-            var valPerMs = diffs.map(function(d) {
+            var valPerMs = diffs.map(function (d) {
                 return d / durationMs;
             })
 
             var currentValues = startValue;
-            var execute = function() {
+            var execute = function () {
 
                 var now = Date.now();
                 var startDiff = now - start;
                 var msDiff = now - before;
 
-                diffs.forEach(function(d, i) {
+                diffs.forEach(function (d, i) {
                     var delta = msDiff * valPerMs[i];
                     var newValue = currentValues[i] + delta;
                     parametersArray[valueIndex[i]] = newValue;
                     currentValues[i] = newValue;
                     this[func].apply(this, parametersArray);
                 }.bind(this));
+
+                this[func].apply(this, parametersArray);
 
                 before = now;
 
