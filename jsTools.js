@@ -1,46 +1,35 @@
+
 var CanvasX = (function () {
 
     'use strict';
 
-    var animateArray = function (_this, func, parametersArray, valueIndex, startValue, endValue, durationMs) {
+    var animateArray = function(_this, func, parametersArray, valueIndex, startValue, endValue, durationMs) {
 
-    };
-
-    var animateSingle = function (_this, func, parametersArray, valueIndex, startValue, endValue, durationMs) {
-
-        return new Promise(function (resolve, reject) {
+        return new Promise(function(resolve, reject) {
             var start = Date.now();
             var before = start;
-            var diff = Math.abs(endValue - startValue);
-            var valPerMs = diff / durationMs;
-            var currentValue = startValue;
-            var execute = function () {
+            var diffs = startValue.map(function(d, i) {
+                return Math.abs(endValue[i] - startValue[i]);
+            })
+
+            var valPerMs = diffs.map(function(d) {
+                return d / durationMs;
+            })
+
+            var currentValues = startValue;
+            var execute = function() {
 
                 var now = Date.now();
                 var startDiff = now - start;
                 var msDiff = now - before;
-                var delta = msDiff * valPerMs;
-                var newValue = currentValue + delta;
 
-                if (Array.isArray(startValue) || Array.isArray(endValue) || Array.isArray(valueIndex)) {
-
-                    if (Array.isArray(startValue) && Array.isArray(endValue) && Array.isArray(valueIndex)) {
-                        console.error('if any of startValue or endValue specified as array then both parameters have to be an Array');
-                        return;
-                    }
-
-                    for (var i = 0; i < startValue.length; i++) {
-                        parametersArray[valueIndex[i]] = newValue;
-                    }
-
-
-                } else {
-                    newValue = currentValue + delta;
-                    parametersArray[valueIndex] = newValue;
-                    currentValue = newValue;
-                }
-
-                this[func].apply(this, parametersArray);
+                diffs.forEach(function(d, i) {
+                    var delta = msDiff * valPerMs[i];
+                    var newValue = currentValues[i] + delta;
+                    parametersArray[valueIndex[i]] = newValue;
+                    currentValues[i] = newValue;
+                    this[func].apply(this, parametersArray);
+                }.bind(this));
 
                 before = now;
 
@@ -50,33 +39,34 @@ var CanvasX = (function () {
                     // if for example alert is used, then after closing the alert canvas does one more paint
                     setTimeout(resolve, 1);
                 }
-
             }.bind(_this);
 
             execute();
-        }.bind(_this));
+        });
     };
 
     /**
-     * Create an array of all the right files in the source dir
-     * @param      {String}   source path
-     * @param      {Object}   options
-     * @param      {Function} callback
-     * @jsFiddle   A jsFiddle embed URL
-     * @return     {Array} an array of string path
+     * creates a animated transition between start and end values in the specifiec duration
+     * @param {string} func - function name to execute
+     * @param {Array} parametersArray - function parameters as an array (perhaps not all values need to be incremented/decremented)
+     * @param {(number|Array)} valueIndex - the index of the value needs to be changed in the parametersArray parameter. type of valueIndex, startValue and endValue and  must match.
+     * @param {(number|Array)} startValue - start value. specify a number if only on parameter should be changed. specify an array if several parameters should be changed. type of valueIndex, startValue and endValue and  must match.
+     * @param {(number|Array)} endValue - end value. specify a number if only on parameter should be changed. specify an array if several parameters should be changed. type of valueIndex, startValue and endValue and  must match.
+     * @param {number} durationMs - the duration for the animation to last
+     * @returns {} 
      */
     var animate = function (func, parametersArray, valueIndex, startValue, endValue, durationMs) {
 
         if (Array.isArray(startValue) || Array.isArray(endValue) || Array.isArray(valueIndex)) {
 
-            if (Array.isArray(startValue) && Array.isArray(endValue) && Array.isArray(valueIndex)) {
+            if (!Array.isArray(startValue) || !Array.isArray(endValue) || !Array.isArray(valueIndex)) {
                 console.error('if any of startValue or endValue specified as array then both parameters have to be an Array');
                 return;
             }
 
-            animateArray(this, parametersArray, valueIndex, startValue, endValue, durationMs);
+            animateArray(this, func, parametersArray, valueIndex, startValue, endValue, durationMs);
         } else {
-            animateSingle(this, func, parametersArray, valueIndex, startValue, endValue, durationMs);
+            animateArray(this, func, parametersArray, [valueIndex], [startValue], [endValue], durationMs);
         }
     };
 
