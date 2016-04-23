@@ -10,6 +10,7 @@ var CanvasX = (function () {
             var start = Date.now();
             var before = start;
             var segments = {};
+            var originalStyle = { fill: _this.fillStyle, stroke: _this.strokeStyle };
 
             functions.forEach(function (func, i) {
 
@@ -30,13 +31,28 @@ var CanvasX = (function () {
                 var now = Date.now();
                 var startDiff = now - start;
                 var msDiff = now - before;
-                var index = 0
+                var segment;
+                var style;
+                var styleChanged;
 
                 this.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
                 for (var name in segments) {
 
-                    var segment = segments[name];
+                    segment = segments[name];
+                    style = segment.data.style;
+
+                    if (style) {
+                        if (style.fill) {
+                            this.fillStyle = style.fill;
+                        }
+
+                        if (style.stroke) {
+                            this.strokeStyle = style.stroke;
+                        }
+
+                        styleChanged = true;
+                    }
 
                     segment.diffs.forEach(function (d, i) {
 
@@ -50,7 +66,10 @@ var CanvasX = (function () {
                     this[segment.functionName].apply(this, segment.data.parametersArray);
                     this.stroke();
 
-                    index++;
+                    if (styleChanged) {
+                        this.fillStyle = originalStyle.fill;
+                        this.strokeStyle = originalStyle.stroke
+                    }
                 }
 
                 before = now;
@@ -113,13 +132,14 @@ var CanvasX = (function () {
         });
     };
 
-    var getTransitionedData = function (startParameters, endParameters) {
+    var getSegmentData = function (startParameters, endParameters, style) {
 
         var result = {
             parametersArray: null,
             valuesIndex: [],
             startValues: [],
-            endValues: []
+            endValues: [],
+            style: style
         };
 
         if (!isNaN(Number(startParameters))) {
@@ -148,7 +168,7 @@ var CanvasX = (function () {
      * @param {number} durationMs - the duration for the animation to last
      * @returns {} 
      */
-    var animate = function (func, startParameters, endParameters, durationMs) {
+    var animate = function (func, startParameters, endParameters, style, durationMs) {
 
         var data;
 
@@ -160,7 +180,7 @@ var CanvasX = (function () {
             }
         }
 
-        data = getTransitionedData(startParameters, endParameters)
+        data = getSegmentData(startParameters, endParameters)
 
         animateArray(this, func, data.parametersArray, data.valuesIndex, data.startValues, data.endValues, durationMs);
     };
@@ -168,21 +188,39 @@ var CanvasX = (function () {
     var animateSeries = function (funcArray, durationMs) {
 
         funcArray.forEach(function (d) {
-            d.data = getTransitionedData(d.startParameters, d.endParameters);
+            d.data = getSegmentData(d.startParameters, d.endParameters, d.style);
         })
 
         animateObjArray(this, funcArray, durationMs);
     };
 
-    var xpand = function () {
+    var strokeCircle = function (x, y, radius) {
+        context.beginPath();
+        context.arc(x, y, radius, 0, 2 * Math.PI);
+        context.stroke();
+        context.closePath();
+    };
 
-        CanvasRenderingContext2D.prototype.animate = animate;
-        CanvasRenderingContext2D.prototype.animateSeries = animateSeries;
+    var fillCircle = function (x, y, radius) {
+        context.beginPath();
+        context.arc(x, y, radius, 0, 2 * Math.PI);
+        context.fill();
+        context.closePath();
+    }
+
+    var applyXtension = function (target) {
+        target.animate = animate;
+        target.animateSeries = animateSeries;
+        target.fillCircle = fillCircle;
+        target.strokeCircle = strokeCircle;
+    }
+
+    var xpand = function () {
+        applyXtension(CanvasRenderingContext2D.prototype);
     };
 
     var xtend = function (context) {
-        context.animate = animate;
-        context.animate = animateSeries;
+        applyXtension(context);
     };
 
     var CanvasX = function (context) {
@@ -251,10 +289,12 @@ CanvasX.xpand();
 //context.animateSeries([{ functionName: 'arc', startParameters: [200, 50, 50, 0, 0], endParameters: [400, 50, 50, 0, 2 * Math.PI] }, { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] }], 1000);
 
 context.animateSeries([
-    { functionName: 'arc', startParameters: [250, 50, 50, 0, 2 * Math.PI], endParameters: [50, 100, 50, 0, 2 * Math.PI] },
-    { functionName: 'arc', startParameters: [50, 100, 50, 0, 2 * Math.PI], endParameters: [250, 50, 50, 0, 2 * Math.PI] },
-    { functionName: 'arc', startParameters: [50, 100, 50, 0, 2 * Math.PI], endParameters: [400, 150, 50, 0, 2 * Math.PI] },
-    { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] }
+    { functionName: 'arc', startParameters: [250, 50, 50, 0, 2 * Math.PI], endParameters: [50, 100, 50, 0, 2 * Math.PI], style: { fill: 'red', stroke: 'gray' } },
+    { functionName: 'arc', startParameters: [50, 100, 50, 0, 2 * Math.PI], endParameters: [250, 50, 50, 0, 2 * Math.PI], style: { fill: 'red', stroke: 'blue' } },
+    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [400, 150, 50], style: { fill: 'red', stroke: 'orange' } },
+    { functionName: 'strokeCircle', startParameters: [50, 100, 50], endParameters: [400, 150, 50], style: { fill: 'red', stroke: 'orange' } },
+    { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] },
+    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [1000, 100, 50], style: { fill: 'red', stroke: 'orange' } },
 ], 1000);
 
 
