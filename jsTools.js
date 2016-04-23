@@ -3,20 +3,84 @@ var CanvasX = (function () {
 
     'use strict';
 
-    var animateArray = function (_this, func, parametersArray, valueIndex, startValue, endValue, durationMs) {
+    var animateObjArray = function (_this, functions, durationMs) {
+
+        return new Promise(function (resolve, reject) {
+
+            var start = Date.now();
+            var before = start;
+            var segments = {};
+
+            functions.forEach(function (func, i) {
+
+                var objName = func.functionName + i; // in case several segments for the same function are sent, this provides overwriting.
+                var segment = segments[objName] = segments[objName] || { functionName: func.functionName, diffs: [], valPerMs: [], currentValues: func.data.startValues, data: func.data };
+
+                segment.diffs = func.data.startValues.map(function (d, i) {
+                    return func.data.endValues[i] - func.data.startValues[i];
+                })
+
+                segment.valPerMs = segment.diffs.map(function (d) {
+                    return d / durationMs;
+                })
+            });
+
+            var execute = function () {
+
+                var now = Date.now();
+                var startDiff = now - start;
+                var msDiff = now - before;
+                var index = 0
+
+                this.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                for (var name in segments) {
+
+                    var segment = segments[name];
+
+                    segment.diffs.forEach(function (d, i) {
+
+                        var delta = msDiff * segment.valPerMs[i];
+                        var newValue = segment.currentValues[i] + delta;
+                        segment.data.parametersArray[segment.data.valuesIndex[i]] = newValue;
+                        segment.currentValues[i] = newValue;
+                    }.bind(this));
+
+                    this.beginPath();
+                    this[segment.functionName].apply(this, segment.data.parametersArray);
+                    this.stroke();
+
+                    index++;
+                }
+
+                before = now;
+
+                if (startDiff < durationMs) {
+                    window.requestAnimationFrame(execute);
+                } else {
+                    // if for example alert is used, then after closing the alert canvas does one more paint
+                    setTimeout(resolve, 1);
+                }
+            }.bind(_this);
+
+            execute();
+        });
+    };
+
+    var animateArray = function (_this, func, parametersArray, valuesIndex, startValues, endValues, durationMs) {
 
         return new Promise(function (resolve, reject) {
             var start = Date.now();
             var before = start;
-            var diffs = startValue.map(function (d, i) {
-                return Math.abs(endValue[i] - startValue[i]);
+            var diffs = startValues.map(function (d, i) {
+                return endValues[i] - startValues[i];
             })
 
             var valPerMs = diffs.map(function (d) {
                 return d / durationMs;
             })
 
-            var currentValues = startValue;
+            var currentValues = startValues;
             var execute = function () {
 
                 var now = Date.now();
@@ -26,11 +90,14 @@ var CanvasX = (function () {
                 diffs.forEach(function (d, i) {
                     var delta = msDiff * valPerMs[i];
                     var newValue = currentValues[i] + delta;
-                    parametersArray[valueIndex[i]] = newValue;
+                    parametersArray[valuesIndex[i]] = newValue;
                     currentValues[i] = newValue;
                 }.bind(this));
 
+                this.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.beginPath();
                 this[func].apply(this, parametersArray);
+                this.stroke();
 
                 before = now;
 
@@ -47,7 +114,6 @@ var CanvasX = (function () {
     };
 
     var getTransitionedData = function (startParameters, endParameters) {
-
 
         var result = {
             parametersArray: null,
@@ -83,7 +149,7 @@ var CanvasX = (function () {
      * @returns {} 
      */
     var animate = function (func, startParameters, endParameters, durationMs) {
-        
+
         var data;
 
         if (Array.isArray(startParameters) || Array.isArray(endParameters)) {
@@ -95,16 +161,28 @@ var CanvasX = (function () {
         }
 
         data = getTransitionedData(startParameters, endParameters)
+
         animateArray(this, func, data.parametersArray, data.valuesIndex, data.startValues, data.endValues, durationMs);
+    };
+
+    var animateSeries = function (funcArray, durationMs) {
+
+        funcArray.forEach(function (d) {
+            d.data = getTransitionedData(d.startParameters, d.endParameters);
+        })
+
+        animateObjArray(this, funcArray, durationMs);
     };
 
     var xpand = function () {
 
         CanvasRenderingContext2D.prototype.animate = animate;
+        CanvasRenderingContext2D.prototype.animateSeries = animateSeries;
     };
 
     var xtend = function (context) {
         context.animate = animate;
+        context.animate = animateSeries;
     };
 
     var CanvasX = function (context) {
@@ -167,4 +245,18 @@ var canvas = document.querySelector('canvas');
 var context = canvas.getContext('2d');
 
 CanvasX.xpand();
-context.animate('fillRect', [0, 0, 1, 1], [0, 0, 100, 100], 500);
+
+//context.animate('arc', [250, 50, 50, 0, 2 * Math.PI], [50, 100, 50, 0, 2 * Math.PI], 1000, true);
+//context.animate('fillRect', [0, 0, 1, 1], [0, 0, 100, 100], 1000);
+//context.animateSeries([{ functionName: 'arc', startParameters: [200, 50, 50, 0, 0], endParameters: [400, 50, 50, 0, 2 * Math.PI] }, { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] }], 1000);
+
+context.animateSeries([
+    { functionName: 'arc', startParameters: [250, 50, 50, 0, 2 * Math.PI], endParameters: [50, 100, 50, 0, 2 * Math.PI] },
+    { functionName: 'arc', startParameters: [50, 100, 50, 0, 2 * Math.PI], endParameters: [250, 50, 50, 0, 2 * Math.PI] },
+    { functionName: 'arc', startParameters: [50, 100, 50, 0, 2 * Math.PI], endParameters: [400, 150, 50, 0, 2 * Math.PI] },
+    { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] }
+], 1000);
+
+
+
+
