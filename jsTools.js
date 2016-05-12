@@ -3,6 +3,19 @@ var CanvasX = (function () {
 
     'use strict';
 
+    var getMaxDuration = function (funcArray) {
+
+        var max = 0;
+
+        funcArray.forEach(function (d) {
+            if (d.duration > max) {
+                max = d.duration;
+            }
+        })
+
+        return max;
+    };
+
     var animateObjArray = function (_this, functions, durationMs) {
 
         return new Promise(function (resolve, reject) {
@@ -11,19 +24,26 @@ var CanvasX = (function () {
             var before = start;
             var segments = {};
             var originalStyle = { fill: _this.fillStyle, stroke: _this.strokeStyle };
+            var totalDuration = durationMs || getMaxDuration(functions);
 
             functions.forEach(function (func, i) {
 
-                var objName = func.functionName + i; // in case several segments for the same function are sent, this provides overwriting.
+                var objName = func.functionName + i; // in case several segments for the same function are sent, this prevents overwriting.
                 var segment = segments[objName] = segments[objName] || { functionName: func.functionName, diffs: [], valPerMs: [], currentValues: func.data.startValues, data: func.data };
 
                 segment.diffs = func.data.startValues.map(function (d, i) {
                     return func.data.endValues[i] - func.data.startValues[i];
                 })
 
-                segment.valPerMs = segment.diffs.map(function (d) {
-                    return d / durationMs;
-                })
+                if (durationMs !== undefined) {
+                    segment.valPerMs = segment.diffs.map(function (d) {
+                        return d / durationMs;
+                    })
+                } else {
+                    segment.valPerMs = segment.diffs.map(function (d) {
+                        return d / func.duration;
+                    });
+                }
             });
 
             var execute = function () {
@@ -33,7 +53,6 @@ var CanvasX = (function () {
                 var msDiff = now - before;
                 var segment;
                 var style;
-                var styleChanged;
 
                 this.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -41,6 +60,20 @@ var CanvasX = (function () {
 
                     segment = segments[name];
                     style = segment.data.style;
+
+
+                    if (!(segment.data.duration && segment.data.duration < startDiff)) {
+
+                        segment.diffs.forEach(function (d, i) {
+
+
+                            var delta = msDiff * segment.valPerMs[i];
+                            var newValue = segment.currentValues[i] + delta;
+                            segment.data.parametersArray[segment.data.valuesIndex[i]] = newValue;
+                            segment.currentValues[i] = newValue;
+                        }.bind(this));
+
+                    }
 
                     if (style) {
                         if (style.fill) {
@@ -50,23 +83,13 @@ var CanvasX = (function () {
                         if (style.stroke) {
                             this.strokeStyle = style.stroke;
                         }
-
-                        styleChanged = true;
                     }
-
-                    segment.diffs.forEach(function (d, i) {
-
-                        var delta = msDiff * segment.valPerMs[i];
-                        var newValue = segment.currentValues[i] + delta;
-                        segment.data.parametersArray[segment.data.valuesIndex[i]] = newValue;
-                        segment.currentValues[i] = newValue;
-                    }.bind(this));
 
                     this.beginPath();
                     this[segment.functionName].apply(this, segment.data.parametersArray);
                     this.stroke();
 
-                    if (styleChanged) {
+                    if (style) {
                         this.fillStyle = originalStyle.fill;
                         this.strokeStyle = originalStyle.stroke
                     }
@@ -74,10 +97,11 @@ var CanvasX = (function () {
 
                 before = now;
 
-                if (startDiff < durationMs) {
+                if (startDiff < totalDuration) {
                     window.requestAnimationFrame(execute);
                 } else {
                     // if for example alert is used, then after closing the alert canvas does one more paint
+
                     setTimeout(resolve, 1);
                 }
             }.bind(_this);
@@ -132,7 +156,7 @@ var CanvasX = (function () {
         });
     };
 
-    var getSegmentData = function (startParameters, endParameters, style) {
+    var getSegmentData = function (startParameters, endParameters, style, duration) {
 
         var result = {
             parametersArray: null,
@@ -141,6 +165,10 @@ var CanvasX = (function () {
             endValues: [],
             style: style
         };
+
+        if (duration) {
+            result.duration = duration;
+        }
 
         if (!isNaN(Number(startParameters))) {
             startParameters = [startParameters];
@@ -194,6 +222,15 @@ var CanvasX = (function () {
         animateObjArray(this, funcArray, durationMs);
     };
 
+    var animateAsymmetricSeries = function (funcArray) {
+
+        funcArray.forEach(function (d) {
+            d.data = getSegmentData(d.startParameters, d.endParameters, d.style, d.duration);
+        })
+
+        animateObjArray(this, funcArray);
+    };
+
     var strokeCircle = function (x, y, radius) {
         context.beginPath();
         context.arc(x, y, radius, 0, 2 * Math.PI);
@@ -213,6 +250,7 @@ var CanvasX = (function () {
         target.animateSeries = animateSeries;
         target.fillCircle = fillCircle;
         target.strokeCircle = strokeCircle;
+        target.animateAsymmetricSeries = animateAsymmetricSeries;
     }
 
     var xpand = function () {
@@ -288,14 +326,32 @@ CanvasX.xpand();
 //context.animate('fillRect', [0, 0, 1, 1], [0, 0, 100, 100], 1000);
 //context.animateSeries([{ functionName: 'arc', startParameters: [200, 50, 50, 0, 0], endParameters: [400, 50, 50, 0, 2 * Math.PI] }, { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] }], 1000);
 
-context.animateSeries([
-    { functionName: 'arc', startParameters: [250, 50, 50, 0, 2 * Math.PI], endParameters: [50, 100, 50, 0, 2 * Math.PI], style: { fill: 'red', stroke: 'gray' } },
-    { functionName: 'arc', startParameters: [50, 100, 50, 0, 2 * Math.PI], endParameters: [250, 50, 50, 0, 2 * Math.PI], style: { fill: 'red', stroke: 'blue' } },
-    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [400, 150, 50], style: { fill: 'red', stroke: 'orange' } },
-    { functionName: 'strokeCircle', startParameters: [50, 100, 50], endParameters: [400, 150, 50], style: { fill: 'red', stroke: 'orange' } },
-    { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] },
-    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [1000, 100, 50], style: { fill: 'red', stroke: 'orange' } },
-], 1000);
+//context.animateSeries([
+//    { functionName: 'arc', startParameters: [250, 50, 50, 0, 2 * Math.PI], endParameters: [50, 100, 50, 0, 2 * Math.PI], style: { fill: 'red', stroke: 'gray' } },
+//    { functionName: 'arc', startParameters: [50, 100, 50, 0, 2 * Math.PI], endParameters: [250, 50, 50, 0, 2 * Math.PI], style: { fill: 'red', stroke: 'blue' } },
+//    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [400, 150, 50], style: { fill: 'red', stroke: 'orange' } },
+//    { functionName: 'strokeCircle', startParameters: [50, 100, 50], endParameters: [400, 150, 50], style: { fill: 'red', stroke: 'orange' } },
+//    { functionName: 'fillRect', startParameters: [0, 0, 1, 1, ], endParameters: [0, 0, 100, 100] },
+//    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [1000, 100, 50], style: { fill: 'red', stroke: 'orange' } },
+//], 1000);
+
+
+//context.animateSeries([
+//    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [1000 - 50, 100, 50], style: { fill: 'red', stroke: 'orange' } },
+//    { functionName: 'fillCircle', startParameters: [50, 200, 50], endParameters: [1000 - 50, 200, 50], style: { fill: 'purple', stroke: 'orange' } },
+//], 11000);
+
+
+context.animateAsymmetricSeries([
+    { functionName: 'fillCircle', startParameters: [50, 100, 50], endParameters: [1000 - 50, 100, 50], style: { fill: 'red', stroke: 'orange' }, duration: 2000 },
+    { functionName: 'fillCircle', startParameters: [50, 200, 50], endParameters: [700, 200, 50], style: { fill: 'purple', stroke: 'orange' }, duration: 500 },
+    { functionName: 'fillCircle', startParameters: [50, 0, 50], endParameters: [450, 200, 50], style: { fill: 'cyan', stroke: 'pink' }, duration: 1000 },
+]);
+
+
+
+
+
 
 
 
